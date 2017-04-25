@@ -76,9 +76,24 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        best_score = float('inf')
+        best_model = None
 
+        for n in range(self.min_n_components, self.max_n_components + 1 ):
+          try:
+            N, M  = self.X.shape
+            model = self.base_model(n)
+            logL  = model.score(self.X, self.lengths)
+            p     = n ** 2 + 2 * M * n - 1
+            score = -2 * logL + p * np.log(N)
+          except:
+            score = float('inf')
+
+          if score < best_score:
+            best_score = score
+            best_model = model
+
+        return best_model
 
 class SelectorDIC(ModelSelector):
     ''' select best model based on Discriminative Information Criterion
@@ -92,9 +107,23 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        best_score = float('-inf')
+        best_model = None
 
+        for n in range(self.min_n_components, self.max_n_components + 1 ):
+          try:
+            model = self.base_model(n)
+            logL  = model.score(self.X, self.lengths)
+            means = np.mean([model.score(*self.hwords[word]) for word in self.words if word != self.this_word])
+            score = logL - means
+          except:
+            score = float('-inf')
+
+          if score > best_score:
+            best_score = score
+            best_model = model
+
+        return best_model
 
 class SelectorCV(ModelSelector):
     ''' select best model based on average log Likelihood of cross-validation folds
@@ -104,5 +133,35 @@ class SelectorCV(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        min_n = 3
+        best_score = float('-inf')
+        best_model = self.base_model(min_n)
+
+        if len(self.sequences) < min_n:
+          return best_model
+
+        for n in range(self.min_n_components, self.max_n_components + 1 ):
+          scores = []
+          model  = self.base_model(n)
+          kf     = KFold()
+
+          for train_index, test_index in kf.split(self.sequences):
+            X_train, len_train = combine_sequences(train_index, self.sequences)
+            X_test,  len_test  = combine_sequences(test_index, self.sequences)
+
+            try:
+              model.fit(X_train, len_train)
+              scores.append(model.score(X_test, len_test))
+            except:
+              pass
+
+          try:
+            score = statistics.mean(scores)
+          except:
+            score = float('-inf')
+
+          if score > best_score:
+            best_score = score
+            best_model = model
+
+        return best_model
